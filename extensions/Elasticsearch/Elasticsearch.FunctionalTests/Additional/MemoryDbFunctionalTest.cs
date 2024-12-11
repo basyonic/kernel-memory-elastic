@@ -2,6 +2,7 @@
 
 using Elastic.Clients.Elasticsearch;
 using Microsoft.KernelMemory.AI;
+using Microsoft.KernelMemory.AI.AzureOpenAI;
 using Microsoft.KernelMemory.AI.OpenAI;
 using Microsoft.KernelMemory.MemoryDb.Elasticsearch;
 using Microsoft.KernelMemory.MemoryDb.Elasticsearch.Internals;
@@ -26,8 +27,8 @@ public abstract class MemoryDbFunctionalTest : BaseFunctionalTestCase, IAsyncLif
         this.Output = output ?? throw new ArgumentNullException(nameof(output));
 
 #pragma warning disable KMEXP01 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.
-        this.TextEmbeddingGenerator = new OpenAITextEmbeddingGenerator(
-            config: base.OpenAiConfig,
+        this.TextEmbeddingGenerator = new AzureOpenAITextEmbeddingGenerator(
+            config: base.AzureOpenAIEmbeddingConfiguration,
             textTokenizer: default,
             loggerFactory: default);
 #pragma warning restore KMEXP01 // Type is for evaluation purposes only and is subject to change or removal in future updates. Suppress this diagnostic to proceed.

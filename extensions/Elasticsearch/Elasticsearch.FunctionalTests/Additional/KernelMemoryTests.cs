@@ -18,7 +18,9 @@ public class KernelMemoryTests : MemoryDbFunctionalTest
         this.KernelMemory = new KernelMemoryBuilder()
             .With(new KernelMemoryConfig { DefaultIndexName = "default4tests" })
             .WithSearchClientConfig(new SearchClientConfig { EmptyAnswer = NotFound })
-            .WithOpenAI(this.OpenAiConfig)
+            //.WithOpenAI(this.OpenAiConfig)
+            .WithAzureOpenAITextGeneration(this.AzureOpenAITextConfiguration)
+            .WithAzureOpenAITextEmbeddingGeneration(this.AzureOpenAIEmbeddingConfiguration)
             .WithElasticsearchMemoryDb(this.ElasticsearchConfig)
             .Build<MemoryServerless>();
     }
