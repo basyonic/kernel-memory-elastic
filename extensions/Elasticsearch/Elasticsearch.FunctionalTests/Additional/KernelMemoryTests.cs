@@ -1,6 +1,7 @@
 ﻿// Copyright (c) Microsoft. All rights reserved.
 
 using System.Diagnostics.CodeAnalysis;
+using Microsoft.AspNetCore.Mvc.Filters;
 using Microsoft.KernelMemory;
 using Microsoft.KernelMemory.MemoryDb.Elasticsearch.Internals;
 using Xunit;
@@ -26,6 +27,71 @@ public class KernelMemoryTests : MemoryDbFunctionalTest
     }
 
     public IKernelMemory KernelMemory { get; }
+
+    [Fact]
+    [Trait("Category", "Elasticsearch")]
+    [SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task", Justification = "<Pending>")]
+    public async Task ItSupportsQueryByMultipleFilters()
+    {
+        // This is an adaptation of the same test in Elasticsearch.FunctionalTests
+
+        string indexName = nameof(this.ItSupportsQueryByMultipleFilters);
+        this.Output.WriteLine($"Index name: {indexName}");
+
+        const string Id = "ItSupportsLimitsAndMinRelevance-file7-Silicon-Carbon.txt";
+
+        this.Output.WriteLine("Uploading document");
+        await this.KernelMemory.ImportDocumentAsync(
+            new Document(Id).AddStream("Cats",GenerateStreamFromString("Cats are cute and fluffy"))
+            .AddTag("category","animal")
+            .AddTag("category", "pet")
+            .AddTag("location", "egypt"),
+            index: indexName,
+            steps: Constants.PipelineWithoutSummary);
+
+        await this.KernelMemory.ImportDocumentAsync(
+            new Document(Id).AddStream("Bears", GenerateStreamFromString("cats are fun"))
+            .AddTag("category", "animal")
+            .AddTag("category", "pet")
+            .AddTag("location", "usa"),
+            index: indexName,
+            steps: Constants.PipelineWithoutSummary);
+
+        await this.KernelMemory.ImportDocumentAsync(
+            new Document(Id).AddStream("Cats2", GenerateStreamFromString("wild cats are dangerous"))
+            .AddTag("category", "animal")
+            .AddTag("category", "wild")
+            .AddTag("location", "egypt"),
+            index: indexName,
+            steps: Constants.PipelineWithoutSummary);
+
+        while (!await this.KernelMemory.IsDocumentReadyAsync(documentId: Id, index: indexName))
+        {
+            this.Output.WriteLine("Waiting for memory ingestion to complete...");
+            await Task.Delay(TimeSpan.FromSeconds(2));
+        }
+
+        var filters = new List<MemoryFilter>();
+        filters.Add(MemoryFilters.ByTag("category", "animal"));
+        var results = await this.KernelMemory.SearchAsync("tell me about cats?", index: indexName, null,
+            filters,
+            minRelevance: 0, limit: -1);
+
+        Assert.True((results.Results.Count > 0));
+        var partitions = results.Results[0].Partitions;
+        var maxRelevance = partitions.Max(p => p.Relevance);
+        var minRelevance = partitions.Min(p => p.Relevance);
+
+        this.Output.WriteLine($"{partitions.Count}, Max Relevance: {maxRelevance}, Min Relevance: {minRelevance}");
+        Assert.True((partitions.Count > 0));
+        Assert.True((minRelevance < 0));
+
+        await this.KernelMemory.DeleteDocumentAsync(Id, index: indexName);
+
+        this.Output.WriteLine("Deleting index");
+        await this.KernelMemory.DeleteIndexAsync(indexName);
+    }
+
 
     [Fact]
     [Trait("Category", "Elasticsearch")]
@@ -436,5 +502,15 @@ public class KernelMemoryTests : MemoryDbFunctionalTest
         }
 
         return answer;
+    }
+
+    private static Stream GenerateStreamFromString(string s)
+    {
+        var stream = new MemoryStream();
+        var writer = new StreamWriter(stream);
+        writer.Write(s);
+        writer.Flush();
+        stream.Position = 0;
+        return stream;
     }
 }
