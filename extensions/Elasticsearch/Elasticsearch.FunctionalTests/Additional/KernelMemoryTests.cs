@@ -31,62 +31,79 @@ public class KernelMemoryTests : MemoryDbFunctionalTest
     [Fact]
     [Trait("Category", "Elasticsearch")]
     [SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task", Justification = "<Pending>")]
-    public async Task ItSupportsQueryByMultipleFilters()
+    public async Task ItSupportsQueryByMultipleFiltersAsync()
     {
         // This is an adaptation of the same test in Elasticsearch.FunctionalTests
 
-        string indexName = nameof(this.ItSupportsQueryByMultipleFilters);
+        string indexName = nameof(this.ItSupportsQueryByMultipleFiltersAsync);
         this.Output.WriteLine($"Index name: {indexName}");
 
-        const string Id = "ItSupportsLimitsAndMinRelevance-file7-Silicon-Carbon.txt";
+        const string Id = "ItSupportsQueryByMultipleFiltersAsync-animals.txt";
 
         this.Output.WriteLine("Uploading document");
         await this.KernelMemory.ImportDocumentAsync(
-            new Document(Id).AddStream("Cats",GenerateStreamFromString("Cats are cute and fluffy"))
-            .AddTag("category","animal")
-            .AddTag("category", "pet")
+            new Document("cats.txt").AddStream("cats.txt", GenerateStreamFromString("Cats are cute and fluffy"))
+            .AddTag("category", "animal")
             .AddTag("location", "egypt"),
             index: indexName,
             steps: Constants.PipelineWithoutSummary);
 
         await this.KernelMemory.ImportDocumentAsync(
-            new Document(Id).AddStream("Bears", GenerateStreamFromString("cats are fun"))
-            .AddTag("category", "animal")
+            new Document("cats2.txt").AddStream("cats2.txt", GenerateStreamFromString("cats are fun"))
             .AddTag("category", "pet")
             .AddTag("location", "usa"),
             index: indexName,
             steps: Constants.PipelineWithoutSummary);
 
         await this.KernelMemory.ImportDocumentAsync(
-            new Document(Id).AddStream("Cats2", GenerateStreamFromString("wild cats are dangerous"))
+            new Document("cats3.txt").AddStream("cats3.txt", GenerateStreamFromString("wild cats are dangerous"))
             .AddTag("category", "animal")
             .AddTag("category", "wild")
             .AddTag("location", "egypt"),
             index: indexName,
             steps: Constants.PipelineWithoutSummary);
 
-        while (!await this.KernelMemory.IsDocumentReadyAsync(documentId: Id, index: indexName))
-        {
-            this.Output.WriteLine("Waiting for memory ingestion to complete...");
-            await Task.Delay(TimeSpan.FromSeconds(2));
-        }
 
+        //ORing tags
         var filters = new List<MemoryFilter>();
         filters.Add(MemoryFilters.ByTag("category", "animal"));
+        filters.Add(MemoryFilters.ByTag("category", "pet"));
         var results = await this.KernelMemory.SearchAsync("tell me about cats?", index: indexName, null,
             filters,
             minRelevance: 0, limit: -1);
 
-        Assert.True((results.Results.Count > 0));
-        var partitions = results.Results[0].Partitions;
-        var maxRelevance = partitions.Max(p => p.Relevance);
-        var minRelevance = partitions.Min(p => p.Relevance);
+        Assert.True((results.Results.Count == 3));
 
-        this.Output.WriteLine($"{partitions.Count}, Max Relevance: {maxRelevance}, Min Relevance: {minRelevance}");
-        Assert.True((partitions.Count > 0));
-        Assert.True((minRelevance < 0));
+        //ANDing tags
+        filters = new List<MemoryFilter>();
+        filters.Add(MemoryFilters.ByTag("category", "animal").ByTag("location", "usa"));
+        filters.Add(MemoryFilters.ByTag("category", "pet").ByTag("location", "usa"));
+        results = await this.KernelMemory.SearchAsync("tell me about cats?", index: indexName, null,
+            filters,
+            minRelevance: 0, limit: -1);
 
-        await this.KernelMemory.DeleteDocumentAsync(Id, index: indexName);
+        Assert.True((results.Results.Count == 1));
+
+        //ANDing tags - no results
+        filters = new List<MemoryFilter>();
+        filters.Add(MemoryFilters.ByTag("location", "usa").ByTag("location", "egypt"));
+        results = await this.KernelMemory.SearchAsync("tell me about cats?", index: indexName, null,
+            filters,
+            minRelevance: 0, limit: -1);
+
+        Assert.True((results.Results.Count == 0));
+
+        //ANDing ORing tags
+        filters = new List<MemoryFilter>();
+        filters.Add(MemoryFilters.ByTag("category", "animal").ByTag("location", "usa"));
+        filters.Add(MemoryFilters.ByTag("category", "animal").ByTag("location", "egypt"));
+        results = await this.KernelMemory.SearchAsync("tell me about cats?", index: indexName, null,
+            filters,
+            minRelevance: 0, limit: -1);
+
+        Assert.True((results.Results.Count == 2));
+
+
 
         this.Output.WriteLine("Deleting index");
         await this.KernelMemory.DeleteIndexAsync(indexName);
