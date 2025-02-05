@@ -31,6 +31,67 @@ public class KernelMemoryTests : MemoryDbFunctionalTest
     [Fact]
     [Trait("Category", "Elasticsearch")]
     [SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task", Justification = "<Pending>")]
+    public async Task ItSupportsQueryBySingleAndMultipleFiltersAsync()
+    {
+        string indexName = nameof(this.ItSupportsQueryBySingleAndMultipleFiltersAsync);
+        this.Output.WriteLine($"Index name: {indexName}");
+        try
+        {
+            const string Id = "ItSupportsQueryBySingleAndMultipleFiltersAsync-animals.txt";
+
+            this.Output.WriteLine("Uploading document");
+            await this.KernelMemory.ImportDocumentAsync(
+                new Document("cats.txt").AddStream("cats.txt", GenerateStreamFromString("Cats are cute and fluffy"))
+                .AddTag("category", "animal")
+                .AddTag("location", "egypt"),
+                index: indexName,
+                steps: Constants.DefaultPipeline);
+
+            await this.KernelMemory.ImportDocumentAsync(
+                new Document("cats2.txt").AddStream("cats2.txt", GenerateStreamFromString("cats are fun"))
+                .AddTag("category", "pet")
+                .AddTag("location", "usa"),
+                index: indexName,
+                steps: Constants.PipelineWithoutSummary);
+
+            await this.KernelMemory.ImportDocumentAsync(
+                new Document("cats3.txt").AddStream("cats3.txt", GenerateStreamFromString("wild cats are dangerous"))
+                .AddTag("category", "animal")
+                .AddTag("category", "wild")
+                .AddTag("location", "egypt"),
+                index: indexName,
+                steps: Constants.PipelineWithoutSummary);
+
+
+            //ANDing tags - another test
+            var filters = new List<MemoryFilter>();
+            MemoryFilter mf = new MemoryFilter();
+            mf.Add("location", "usa");
+            mf.Add("location", "egypt");
+            
+            filters.Add(MemoryFilters.ByTag("location", "usa"));
+            var results = await this.KernelMemory.SearchAsync("tell me about cats?", index: indexName, mf,
+                null,
+                minRelevance: 0, limit: -1);
+
+            
+            Assert.True((results.Results.Count == 0));
+            this.Output.WriteLine("Deleting index");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine(ex.Message);
+        }
+        finally
+        {
+            await this.KernelMemory.DeleteIndexAsync(indexName);
+        }
+        
+    }
+
+    [Fact]
+    [Trait("Category", "Elasticsearch")]
+    [SuppressMessage("Reliability", "CA2007:Consider calling ConfigureAwait on the awaited task", Justification = "<Pending>")]
     public async Task ItSupportsQueryByMultipleFiltersAsync()
     {
         // This is an adaptation of the same test in Elasticsearch.FunctionalTests
@@ -67,7 +128,7 @@ public class KernelMemoryTests : MemoryDbFunctionalTest
         //ORing tags
         var filters = new List<MemoryFilter>();
         filters.Add(MemoryFilters.ByTag("category", "animal"));
-        filters.Add(MemoryFilters.ByTag("category", "pet"));
+        filters.Add(MemoryFilters.ByTag("category", "pet"));      
         var results = await this.KernelMemory.SearchAsync("tell me about cats?", index: indexName, null,
             filters,
             minRelevance: 0, limit: -1);
